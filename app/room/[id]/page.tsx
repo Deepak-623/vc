@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Mic, MicOff, PhoneOff, Copy, Check } from "lucide-react"
@@ -16,72 +16,104 @@ interface Participant {
 
 export default function VoiceChatRoom({ params }: { params: { id: string } }) {
   const router = useRouter()
-  const [isMuted, setIsMuted] = useState(false)
+  const [isMuted, setIsMuted] = useState(true) // Start muted by default
   const [roomCode, setRoomCode] = useState("UYVUK77IUIUB")
   const [copied, setCopied] = useState(false)
   const [participants, setParticipants] = useState<Participant[]>([])
+  const [micPermissionGranted, setMicPermissionGranted] = useState(false) // Track mic permission
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const analyserRef = useRef<AnalyserNode | null>(null)
+  const micStreamRef = useRef<MediaStream | null>(null)
+  const animationFrameRef = useRef<number | null>(null)
 
   useEffect(() => {
-    // Get username from localStorage
     const username = localStorage.getItem("username") || "Guest"
     const profilePicture = localStorage.getItem("profilePicture") || ""
 
-    // Initialize with current user
     const currentUser: Participant = {
       id: "1",
       username,
       profilePicture,
       isSpeaking: false,
-      isMuted: false,
+      isMuted: true,
     }
 
-    // Add some demo participants with staggered animations
-    setTimeout(() => {
-      setParticipants([currentUser])
-    }, 100)
+    setParticipants([currentUser])
 
-    setTimeout(() => {
-      setParticipants((prev) => [
-        ...prev,
-        {
-          id: "2",
-          username: "Sarah Chen",
-          profilePicture: "/professional-woman-avatar.png",
-          isSpeaking: false,
-          isMuted: false,
-        },
-      ])
-    }, 600)
-
-    setTimeout(() => {
-      setParticipants((prev) => [
-        ...prev,
-        {
-          id: "3",
-          username: "Mike Johnson",
-          profilePicture: "/professional-man-avatar.png",
-          isSpeaking: true,
-          isMuted: false,
-        },
-      ])
-    }, 1100)
-
-    // Simulate random speaking
-    const interval = setInterval(() => {
-      setParticipants((prev) =>
-        prev.map((p) => ({
-          ...p,
-          isSpeaking: Math.random() > 0.7,
-        })),
-      )
-    }, 2000)
-
-    return () => clearInterval(interval)
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current)
+      }
+      if (micStreamRef.current) {
+        micStreamRef.current.getTracks().forEach((track) => track.stop())
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close()
+      }
+    }
   }, [])
 
-  const toggleMute = () => {
+  const detectAudioLevel = () => {
+    if (!analyserRef.current) return
+
+    const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount)
+    analyserRef.current.getByteFrequencyData(dataArray)
+
+    // Calculate average volume
+    const average = dataArray.reduce((a, b) => a + b) / dataArray.length
+
+    // Update speaking state based on volume threshold
+    const isSpeaking = average > 20 // Adjust threshold as needed
+
+    setParticipants((prev) => prev.map((p, i) => (i === 0 ? { ...p, isSpeaking: !isMuted && isSpeaking } : p)))
+
+    animationFrameRef.current = requestAnimationFrame(detectAudioLevel)
+  }
+
+  const requestMicrophonePermission = async () => {
+    if (micPermissionGranted) return true
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      micStreamRef.current = stream
+      setMicPermissionGranted(true)
+
+      // Set up audio analysis
+      const audioContext = new AudioContext()
+      audioContextRef.current = audioContext
+
+      const analyser = audioContext.createAnalyser()
+      analyser.fftSize = 256
+      analyserRef.current = analyser
+
+      const source = audioContext.createMediaStreamSource(stream)
+      source.connect(analyser)
+
+      // Start detecting audio levels
+      detectAudioLevel()
+
+      return true
+    } catch (error) {
+      console.error("Microphone permission denied:", error)
+      return false
+    }
+  }
+
+  const toggleMute = async () => {
+    if (isMuted && !micPermissionGranted) {
+      const granted = await requestMicrophonePermission()
+      if (!granted) {
+        alert("Microphone permission is required to unmute")
+        return
+      }
+    }
+
     setIsMuted(!isMuted)
-    setParticipants((prev) => prev.map((p, i) => (i === 0 ? { ...p, isMuted: !isMuted } : p)))
+    setParticipants((prev) => prev.map((p, i) => (i === 0 ? { ...p, isMuted: !isMuted, isSpeaking: false } : p)))
+
+    if (!isMuted) {
+      setParticipants((prev) => prev.map((p, i) => (i === 0 ? { ...p, isSpeaking: false } : p)))
+    }
   }
 
   const handleLeaveRoom = () => {
