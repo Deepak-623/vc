@@ -1,10 +1,11 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter, useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Mic, MicOff, PhoneOff, Copy, Check } from "lucide-react"
+import { Mic, MicOff, PhoneOff, Copy, Check, Loader2 } from "lucide-react"
 import ParticipantTile from "@/components/participant-tile"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 interface Participant {
   id: string
@@ -14,14 +15,17 @@ interface Participant {
   isMuted: boolean
 }
 
-export default function VoiceChatRoom({ params }: { params: { id: string } }) {
+export default function VoiceChatRoom() {
   const router = useRouter()
-  const searchParams = useSearchParams()
+  const params = useParams()
+  const roomId = params.id as string
   const [isMuted, setIsMuted] = useState(true)
   const [roomCode, setRoomCode] = useState("")
   const [copied, setCopied] = useState(false)
   const [participants, setParticipants] = useState<Participant[]>([])
   const [micPermissionGranted, setMicPermissionGranted] = useState(false)
+  const [isValidating, setIsValidating] = useState(true)
+  const [roomError, setRoomError] = useState("")
   const audioContextRef = useRef<AudioContext | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
   const micStreamRef = useRef<MediaStream | null>(null)
@@ -34,20 +38,7 @@ export default function VoiceChatRoom({ params }: { params: { id: string } }) {
       return
     }
 
-    const code = searchParams.get("code") || ""
-    setRoomCode(code)
-
-    const profilePicture = localStorage.getItem("profilePicture") || ""
-
-    const currentUser: Participant = {
-      id: "1",
-      username,
-      profilePicture,
-      isSpeaking: false,
-      isMuted: true,
-    }
-
-    setParticipants([currentUser])
+    validateRoom()
 
     return () => {
       if (animationFrameRef.current) {
@@ -60,7 +51,41 @@ export default function VoiceChatRoom({ params }: { params: { id: string } }) {
         audioContextRef.current.close()
       }
     }
-  }, [router, searchParams])
+  }, [router, roomId])
+
+  const validateRoom = async () => {
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001"
+      const response = await fetch(`${backendUrl}/api/room/${roomId}`)
+
+      if (!response.ok) {
+        setRoomError("Room not found. Please check the room link or code.")
+        setIsValidating(false)
+        return
+      }
+
+      const data = await response.json()
+      setRoomCode(data.joinCode)
+
+      const username = localStorage.getItem("username")
+      const profilePicture = localStorage.getItem("profilePicture") || ""
+
+      const currentUser: Participant = {
+        id: "1",
+        username: username || "User",
+        profilePicture,
+        isSpeaking: false,
+        isMuted: true,
+      }
+
+      setParticipants([currentUser])
+      setIsValidating(false)
+    } catch (err) {
+      console.error("[v0] Error validating room:", err)
+      setRoomError("Failed to connect to server. Please check if the backend is running.")
+      setIsValidating(false)
+    }
+  }
 
   const detectAudioLevel = () => {
     if (!analyserRef.current) return
@@ -138,6 +163,40 @@ export default function VoiceChatRoom({ params }: { params: { id: string } }) {
     await navigator.clipboard.writeText(roomCode)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  if (isValidating) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <p className="text-muted-foreground">Joining room...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (roomError) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle className="text-destructive">Room Not Found</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-muted-foreground">{roomError}</p>
+            <div className="flex gap-2">
+              <Button onClick={() => router.push("/join-room")} variant="outline" className="flex-1">
+                Try Another Code
+              </Button>
+              <Button onClick={() => router.push("/")} className="flex-1">
+                Back to Home
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (

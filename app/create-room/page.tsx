@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Copy, Check, Video, ArrowLeft } from "lucide-react"
+import { Copy, Check, Video, ArrowLeft, Loader2 } from "lucide-react"
 import Link from "next/link"
 
 export default function CreateRoomPage() {
@@ -14,6 +14,8 @@ export default function CreateRoomPage() {
   const [copiedLink, setCopiedLink] = useState(false)
   const [copiedCode, setCopiedCode] = useState(false)
   const [roomId, setRoomId] = useState("")
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState("")
 
   useEffect(() => {
     const username = localStorage.getItem("username")
@@ -22,25 +24,35 @@ export default function CreateRoomPage() {
       return
     }
 
-    const code = generateRoomCode()
-    setRoomCode(code)
-
-    const id = generateRoomId()
-    setRoomId(id)
-
-    const link = `${window.location.origin}/room/${id}?code=${code}`
-    setRoomLink(link)
+    createRoomOnBackend()
   }, [router])
 
-  const generateRoomCode = () => {
-    return Array.from(
-      { length: 12 },
-      () => "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"[Math.floor(Math.random() * 36)],
-    ).join("")
-  }
+  const createRoomOnBackend = async () => {
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001"
+      const response = await fetch(`${backendUrl}/api/create-room`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
 
-  const generateRoomId = () => {
-    return Array.from({ length: 16 }, () => "abcdefghijklmnopqrstuvwxyz"[Math.floor(Math.random() * 26)]).join("")
+      if (!response.ok) {
+        throw new Error("Failed to create room")
+      }
+
+      const data = await response.json()
+      setRoomCode(data.joinCode)
+      setRoomId(data.roomId)
+
+      const link = `${window.location.origin}/room/${data.roomId}`
+      setRoomLink(link)
+      setIsLoading(false)
+    } catch (err) {
+      console.error("[v0] Error creating room:", err)
+      setError("Failed to create room. Please check if the backend server is running.")
+      setIsLoading(false)
+    }
   }
 
   const copyToClipboard = async (text: string, type: "link" | "code") => {
@@ -55,7 +67,36 @@ export default function CreateRoomPage() {
   }
 
   const handleEnterRoom = () => {
-    router.push(`/room/${roomId}?code=${roomCode}`)
+    router.push(`/room/${roomId}`)
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <p className="text-muted-foreground">Creating your room...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle className="text-destructive">Error</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-muted-foreground">{error}</p>
+            <Button onClick={() => router.push("/")} className="w-full">
+              Back to Home
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (

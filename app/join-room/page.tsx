@@ -7,13 +7,14 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Video, ArrowLeft } from "lucide-react"
+import { Video, ArrowLeft, Loader2 } from "lucide-react"
 import Link from "next/link"
 
 export default function JoinRoomPage() {
   const router = useRouter()
   const [roomCode, setRoomCode] = useState("")
   const [error, setError] = useState("")
+  const [isValidating, setIsValidating] = useState(false)
 
   useEffect(() => {
     const username = localStorage.getItem("username")
@@ -22,7 +23,7 @@ export default function JoinRoomPage() {
     }
   }, [router])
 
-  const handleJoinRoom = () => {
+  const handleJoinRoom = async () => {
     if (!roomCode.trim()) {
       setError("Please enter a room code")
       return
@@ -33,11 +34,33 @@ export default function JoinRoomPage() {
       return
     }
 
-    const roomId = Array.from({ length: 16 }, () => "abcdefghijklmnopqrstuvwxyz"[Math.floor(Math.random() * 26)]).join(
-      "",
-    )
+    setIsValidating(true)
+    setError("")
 
-    router.push(`/room/${roomId}?code=${roomCode}`)
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001"
+      const response = await fetch(`${backendUrl}/api/validate-room`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ joinCode: roomCode }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        setError(data.error || "Invalid room code. Please check and try again.")
+        setIsValidating(false)
+        return
+      }
+
+      const data = await response.json()
+      router.push(`/room/${data.roomId}`)
+    } catch (err) {
+      console.error("[v0] Error validating room:", err)
+      setError("Failed to connect to server. Please check if the backend is running.")
+      setIsValidating(false)
+    }
   }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -90,6 +113,7 @@ export default function JoinRoomPage() {
               maxLength={12}
               className="h-12 text-center text-lg font-mono tracking-wider transition-all duration-200 focus:ring-2 focus:ring-primary/20"
               onKeyDown={(e) => e.key === "Enter" && handleJoinRoom()}
+              disabled={isValidating}
             />
             {error && <p className="text-sm text-destructive animate-fade-in">{error}</p>}
           </div>
@@ -98,10 +122,17 @@ export default function JoinRoomPage() {
           <div className="pt-2">
             <Button
               onClick={handleJoinRoom}
-              disabled={!roomCode.trim()}
+              disabled={!roomCode.trim() || isValidating}
               className="w-full h-12 text-base font-semibold transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
             >
-              Join Room
+              {isValidating ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Validating...
+                </>
+              ) : (
+                "Join Room"
+              )}
             </Button>
           </div>
         </CardContent>

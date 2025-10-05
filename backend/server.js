@@ -2,7 +2,7 @@ import express from "express"
 import { createServer } from "http"
 import { Server } from "socket.io"
 import cors from "cors"
-import { createRoom, getRoomByCode } from "./rooms.js"
+import { createRoom, getRoomByCode, getRoomById } from "./rooms.js"
 import { setupSocketHandlers } from "./socket.js"
 
 const app = express()
@@ -38,6 +38,17 @@ app.post("/api/validate-room", (req, res) => {
   }
 
   res.json({ roomId: result.roomId })
+})
+
+app.get("/api/room/:roomId", (req, res) => {
+  const { roomId } = req.params
+  const room = getRoomById(roomId)
+
+  if (!room) {
+    return res.status(404).json({ error: "Room not found" })
+  }
+
+  res.json({ roomId: room.id, joinCode: room.joinCode, participantCount: room.participants.length })
 })
 
 app.get("/api/health", (req, res) => {
