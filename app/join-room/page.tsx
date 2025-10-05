@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,6 +15,13 @@ export default function JoinRoomPage() {
   const [roomCode, setRoomCode] = useState("")
   const [error, setError] = useState("")
 
+  useEffect(() => {
+    const username = localStorage.getItem("username")
+    if (!username) {
+      router.push("/")
+    }
+  }, [router])
+
   const handleJoinRoom = () => {
     if (!roomCode.trim()) {
       setError("Please enter a room code")
@@ -26,7 +33,6 @@ export default function JoinRoomPage() {
       return
     }
 
-    // Generate a room ID and navigate
     const roomId = Array.from({ length: 16 }, () => "abcdefghijklmnopqrstuvwxyz"[Math.floor(Math.random() * 26)]).join(
       "",
     )

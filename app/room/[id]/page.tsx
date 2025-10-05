@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Mic, MicOff, PhoneOff, Copy, Check } from "lucide-react"
 import ParticipantTile from "@/components/participant-tile"
@@ -16,18 +16,27 @@ interface Participant {
 
 export default function VoiceChatRoom({ params }: { params: { id: string } }) {
   const router = useRouter()
-  const [isMuted, setIsMuted] = useState(true) // Start muted by default
-  const [roomCode, setRoomCode] = useState("UYVUK77IUIUB")
+  const searchParams = useSearchParams()
+  const [isMuted, setIsMuted] = useState(true)
+  const [roomCode, setRoomCode] = useState("")
   const [copied, setCopied] = useState(false)
   const [participants, setParticipants] = useState<Participant[]>([])
-  const [micPermissionGranted, setMicPermissionGranted] = useState(false) // Track mic permission
+  const [micPermissionGranted, setMicPermissionGranted] = useState(false)
   const audioContextRef = useRef<AudioContext | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
   const micStreamRef = useRef<MediaStream | null>(null)
   const animationFrameRef = useRef<number | null>(null)
 
   useEffect(() => {
-    const username = localStorage.getItem("username") || "Guest"
+    const username = localStorage.getItem("username")
+    if (!username) {
+      router.push("/")
+      return
+    }
+
+    const code = searchParams.get("code") || ""
+    setRoomCode(code)
+
     const profilePicture = localStorage.getItem("profilePicture") || ""
 
     const currentUser: Participant = {
@@ -51,7 +60,7 @@ export default function VoiceChatRoom({ params }: { params: { id: string } }) {
         audioContextRef.current.close()
       }
     }
-  }, [])
+  }, [router, searchParams])
 
   const detectAudioLevel = () => {
     if (!analyserRef.current) return
@@ -59,11 +68,8 @@ export default function VoiceChatRoom({ params }: { params: { id: string } }) {
     const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount)
     analyserRef.current.getByteFrequencyData(dataArray)
 
-    // Calculate average volume
     const average = dataArray.reduce((a, b) => a + b) / dataArray.length
-
-    // Update speaking state based on volume threshold
-    const isSpeaking = average > 20 // Adjust threshold as needed
+    const isSpeaking = average > 20
 
     setParticipants((prev) => prev.map((p, i) => (i === 0 ? { ...p, isSpeaking: !isMuted && isSpeaking } : p)))
 
@@ -74,11 +80,16 @@ export default function VoiceChatRoom({ params }: { params: { id: string } }) {
     if (micPermissionGranted) return true
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      })
       micStreamRef.current = stream
       setMicPermissionGranted(true)
 
-      // Set up audio analysis
       const audioContext = new AudioContext()
       audioContextRef.current = audioContext
 
@@ -89,12 +100,16 @@ export default function VoiceChatRoom({ params }: { params: { id: string } }) {
       const source = audioContext.createMediaStreamSource(stream)
       source.connect(analyser)
 
-      // Start detecting audio levels
       detectAudioLevel()
 
       return true
     } catch (error) {
-      console.error("Microphone permission denied:", error)
+      console.error("[v0] Microphone permission denied:", error)
+      if (window.location.protocol !== "https:" && window.location.hostname !== "localhost") {
+        alert("Microphone access requires HTTPS. Please use a secure connection.")
+      } else {
+        alert("Microphone permission is required to unmute. Please allow microphone access in your browser settings.")
+      }
       return false
     }
   }
@@ -103,7 +118,6 @@ export default function VoiceChatRoom({ params }: { params: { id: string } }) {
     if (isMuted && !micPermissionGranted) {
       const granted = await requestMicrophonePermission()
       if (!granted) {
-        alert("Microphone permission is required to unmute")
         return
       }
     }
@@ -134,17 +148,19 @@ export default function VoiceChatRoom({ params }: { params: { id: string } }) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <h1 className="text-lg font-semibold text-foreground">Voice Room</h1>
-              <button
-                onClick={copyRoomCode}
-                className="flex items-center gap-2 px-3 py-1.5 bg-accent rounded-lg border border-border hover:bg-accent/80 transition-all duration-200 hover:scale-105 active:scale-95 group"
-              >
-                <span className="text-sm font-mono font-semibold text-primary">{roomCode}</span>
-                {copied ? (
-                  <Check className="w-3.5 h-3.5 text-primary" />
-                ) : (
-                  <Copy className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary transition-colors duration-200" />
-                )}
-              </button>
+              {roomCode && (
+                <button
+                  onClick={copyRoomCode}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-accent rounded-lg border border-border hover:bg-accent/80 transition-all duration-200 hover:scale-105 active:scale-95 group"
+                >
+                  <span className="text-sm font-mono font-semibold text-primary">{roomCode}</span>
+                  {copied ? (
+                    <Check className="w-3.5 h-3.5 text-primary" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary transition-colors duration-200" />
+                  )}
+                </button>
+              )}
             </div>
             <Button
               onClick={handleLeaveRoom}

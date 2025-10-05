@@ -13,16 +13,24 @@ export default function CreateRoomPage() {
   const [roomLink, setRoomLink] = useState("")
   const [copiedLink, setCopiedLink] = useState(false)
   const [copiedCode, setCopiedCode] = useState(false)
+  const [roomId, setRoomId] = useState("")
 
   useEffect(() => {
-    // Generate random room code
+    const username = localStorage.getItem("username")
+    if (!username) {
+      router.push("/")
+      return
+    }
+
     const code = generateRoomCode()
     setRoomCode(code)
 
-    // Generate room link
-    const link = `${window.location.origin}/room/${generateRoomId()}?JOIN=${code}`
+    const id = generateRoomId()
+    setRoomId(id)
+
+    const link = `${window.location.origin}/room/${id}?code=${code}`
     setRoomLink(link)
-  }, [])
+  }, [router])
 
   const generateRoomCode = () => {
     return Array.from(
@@ -47,12 +55,11 @@ export default function CreateRoomPage() {
   }
 
   const handleEnterRoom = () => {
-    router.push(`/room/${generateRoomId()}?code=${roomCode}`)
+    router.push(`/room/${roomId}?code=${roomCode}`)
   }
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
-      {/* Header */}
       <div className="w-full max-w-2xl mb-8">
         <Link
           href="/"
@@ -63,7 +70,6 @@ export default function CreateRoomPage() {
         </Link>
       </div>
 
-      {/* Logo */}
       <div className="mb-8 animate-fade-in">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center">
@@ -73,14 +79,12 @@ export default function CreateRoomPage() {
         </div>
       </div>
 
-      {/* Main Card */}
       <Card className="w-full max-w-2xl shadow-lg border-border animate-slide-in">
         <CardHeader className="text-center space-y-2">
           <CardTitle className="text-2xl font-bold text-balance">Room Created Successfully!</CardTitle>
           <CardDescription className="text-base">Share the link or code with others to invite them</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Room Link */}
           <div className="space-y-3 animate-fade-in" style={{ animationDelay: "0.1s" }}>
             <label className="text-sm font-medium text-foreground">Room Link</label>
             <div className="flex gap-2">
@@ -98,7 +102,6 @@ export default function CreateRoomPage() {
             </div>
           </div>
 
-          {/* Room Code */}
           <div className="space-y-3 animate-fade-in" style={{ animationDelay: "0.2s" }}>
             <label className="text-sm font-medium text-foreground">Room Code</label>
             <div className="flex items-center gap-3">
@@ -116,7 +119,6 @@ export default function CreateRoomPage() {
             </div>
           </div>
 
-          {/* Enter Room Button */}
           <div className="pt-4 animate-fade-in" style={{ animationDelay: "0.3s" }}>
             <Button
               onClick={handleEnterRoom}
